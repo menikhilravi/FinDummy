@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Google Fonts ─────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+:root {
+  --neon-green: #00ff88;
+  --neon-red:   #ff3355;
+  --neon-blue:  #00d4ff;
+  --bg-base:    #080c10;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow-x: hidden;
+  /* Subtle noise texture */
+  background-image:
+    radial-gradient(ellipse at 20% 10%, rgba(0, 255, 136, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 90%, rgba(0, 212, 255, 0.03) 0%, transparent 50%);
+  min-height: 100vh;
+}
+
+/* ── Glassmorphism card ───────────────────────────────────────────────────── */
+@layer components {
+  .glass-card {
+    @apply bg-bg-card/60 backdrop-blur-md border border-bg-border;
+  }
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #1f2937 transparent;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* ── Neon text effects ────────────────────────────────────────────────────── */
+.text-glow-green {
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.6);
+}
+.text-glow-red {
+  text-shadow: 0 0 10px rgba(255, 51, 85, 0.6);
+}
+
+/* ── Grid background ─────────────────────────────────────────────────────── */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(31, 41, 55, 0.4) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(31, 41, 55, 0.4) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── Scan line effect ─────────────────────────────────────────────────────── */
+.scanline::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.05) 2px,
+    rgba(0, 0, 0, 0.05) 4px
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}
