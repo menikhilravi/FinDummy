@@ -46,10 +46,14 @@ LOOP_INTERVALS: dict[MarketState, int] = {
 }
 
 
+_CLOCK_TIMEOUT = 5  # seconds — Alpaca clock fetch must complete within this time
+
+
 class MarketClock:
     def __init__(self) -> None:
         self._last_state: MarketState = MarketState.CLOSED
         self._alpaca_available: bool = True
+        self._lock = asyncio.Lock()   # protects _last_state from concurrent updates
 
     async def get_state(self, alpaca=None) -> MarketState:
         """
@@ -59,19 +63,23 @@ class MarketClock:
         if alpaca and self._alpaca_available:
             try:
                 state = await self._from_alpaca(alpaca)
-                self._last_state = state
+                async with self._lock:
+                    self._last_state = state
                 return state
             except Exception as exc:
                 logger.warning("Alpaca clock unavailable, using time fallback: %s", exc)
                 self._alpaca_available = False
 
         state = self._from_time()
-        self._last_state = state
+        async with self._lock:
+            self._last_state = state
         return state
 
     async def _from_alpaca(self, alpaca) -> MarketState:
-        import asyncio
-        clock = await asyncio.to_thread(alpaca._trading.get_clock)
+        clock = await asyncio.wait_for(
+            asyncio.to_thread(alpaca._trading.get_clock),
+            timeout=_CLOCK_TIMEOUT,
+        )
         if clock.is_open:
             return MarketState.OPEN
         # Market is closed per Alpaca — check if we're in extended window
@@ -99,6 +107,7 @@ class MarketClock:
         return self._last_state in (MarketState.OPEN, MarketState.EXTENDED)
 
     def loop_interval(self) -> int:
+        # Read is atomic on CPython; Lock not needed here for a simple property read.
         return LOOP_INTERVALS[self._last_state]
 
 

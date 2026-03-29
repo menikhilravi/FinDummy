@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from google import genai
@@ -23,6 +24,29 @@ from app.core.config import settings
 from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
+
+# Gemini free tier: 15 RPM. Guard at 80% utilisation to leave headroom.
+_GEMINI_RPM_LIMIT = 15
+_GEMINI_RATE_BUFFER = 0.80
+_gemini_call_timestamps: list[float] = []
+_gemini_rate_lock = asyncio.Lock()
+
+
+async def _gemini_rate_guard() -> None:
+    """Enforce Gemini RPM cap with exponential back-off."""
+    async with _gemini_rate_lock:
+        global _gemini_call_timestamps
+        now = time.monotonic()
+        _gemini_call_timestamps = [t for t in _gemini_call_timestamps if now - t < 60]
+        utilisation = len(_gemini_call_timestamps) / _GEMINI_RPM_LIMIT
+        if utilisation >= _GEMINI_RATE_BUFFER:
+            wait = 2 ** (utilisation * 4)   # up to ~16 s
+            logger.warning(
+                "Gemini rate-limit buffer hit (%.0f%%). Waiting %.1fs",
+                utilisation * 100, wait,
+            )
+            await asyncio.sleep(wait)
+        _gemini_call_timestamps.append(time.monotonic())
 
 OFF_TOPIC_MARKER = "OFF_TOPIC_QUERY"
 
@@ -89,6 +113,8 @@ class GeminiClient:
 
         # ── Build contents ────────────────────────────────────────────────────
         contents = self._build_contents(message, history, context)
+
+        await _gemini_rate_guard()
 
         try:
             response = await asyncio.to_thread(

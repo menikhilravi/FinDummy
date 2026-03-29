@@ -39,7 +39,8 @@ class ConnectionManager:
         for ws in self._connections:
             try:
                 await ws.send_json(payload)
-            except Exception:
+            except Exception as exc:
+                logger.warning("WS send failed — dropping client: %s", exc)
                 dead.append(ws)
         for ws in dead:
             self.disconnect(ws)

@@ -29,12 +29,26 @@ from app.database.supabase_client import db
 
 logger = logging.getLogger(__name__)
 
-# Shared broadcast queue — the WebSocket handler drains this
-_broadcast_queue: asyncio.Queue[dict] = asyncio.Queue()
+# Shared broadcast queue — the WebSocket handler drains this.
+# Bounded to prevent unbounded memory growth when broadcast consumers are slow.
+# put_nowait is used for non-critical events; put() for critical ones.
+_BROADCAST_QUEUE_MAX = 200
+_broadcast_queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=_BROADCAST_QUEUE_MAX)
 
 
 def get_broadcast_queue() -> asyncio.Queue[dict]:
     return _broadcast_queue
+
+
+def _safe_broadcast(payload: dict) -> None:
+    """Put a message on the broadcast queue, dropping it (with a warning) if full."""
+    try:
+        _broadcast_queue.put_nowait(payload)
+    except asyncio.QueueFull:
+        logger.warning(
+            "Broadcast queue full (%d items) — dropping event type '%s'",
+            _BROADCAST_QUEUE_MAX, payload.get("type", "?"),
+        )
 
 
 class TradingAgent:
@@ -74,7 +88,7 @@ class TradingAgent:
             await _broadcast_queue.put({"type": "shutdown", "message": msg})
             return {"status": "ok", "message": msg}
         except Exception as exc:
-            logger.error("Emergency shutdown error: %s", exc)
+            logger.error("Emergency shutdown error: %s", exc, exc_info=True)
             return {"status": "error", "message": str(exc)}
 
     # ── Main loop ─────────────────────────────────────────────────────────────
@@ -87,7 +101,7 @@ class TradingAgent:
                 raise
             except Exception as exc:
                 logger.error("Agent loop error: %s", exc, exc_info=True)
-                await _broadcast_queue.put({
+                _safe_broadcast({
                     "type": "error",
                     "message": f"Agent loop error: {exc}",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -105,7 +119,7 @@ class TradingAgent:
         logger.info("─── Agent cycle start | market=%s | trading=%s ───",
                     state.value, trading_allowed)
 
-        await _broadcast_queue.put({
+        _safe_broadcast({
             "type": "market_state",
             "state": state.value,
             "trading_allowed": trading_allowed,
@@ -132,7 +146,7 @@ class TradingAgent:
             logger.warning("Failed to log equity snapshot: %s", exc)
 
         # Broadcast account update
-        await _broadcast_queue.put({
+        _safe_broadcast({
             "type": "account_update",
             "data": account,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -142,15 +156,26 @@ class TradingAgent:
         await watchlist_manager.run_discovery(finnhub_client, alpaca, db)
 
         # ── Per-ticker analysis ───────────────────────────────────────────────
+        pending_watchlist: list[dict] = []
         for symbol in watchlist_manager.active:
             if not self._running:
                 break
-            await self._analyse_ticker(symbol, account, macro, trading_allowed)
+            wl_row = await self._analyse_ticker(symbol, account, macro, trading_allowed)
+            if wl_row:
+                pending_watchlist.append(wl_row)
             await asyncio.sleep(2)           # brief pause between tickers
+
+        # Flush all watchlist updates in a single DB call
+        if pending_watchlist:
+            try:
+                await db.batch_upsert_watchlist(pending_watchlist)
+            except Exception as exc:
+                logger.warning("Batch watchlist upsert failed: %s", exc)
 
     async def _analyse_ticker(
         self, symbol: str, account: dict, macro: dict, trading_allowed: bool
-    ) -> None:
+    ) -> dict | None:
+        """Analyse a single ticker. Returns a watchlist row dict to be batch-upserted, or None on error."""
         try:
             price_data, fh_quote, news, current_position, asset, daily_bars, intraday_bars = \
                 await asyncio.gather(
@@ -165,7 +190,7 @@ class TradingAgent:
                 )
             if isinstance(price_data, Exception):
                 logger.warning("[%s] Price data error: %s", symbol, price_data)
-                return
+                return None
             if isinstance(fh_quote, Exception):
                 fh_quote = None
             if isinstance(news, Exception):
@@ -179,8 +204,8 @@ class TradingAgent:
             if isinstance(intraday_bars, Exception):
                 intraday_bars = []
         except Exception as exc:
-            logger.error("[%s] Data fetch error: %s", symbol, exc)
-            return
+            logger.error("[%s] Data fetch error: %s", symbol, exc, exc_info=True)
+            return None
 
         # ── Multi-source price verification ───────────────────────────────────
         price_data = self._verify_price(symbol, price_data, fh_quote, daily_bars)
@@ -193,7 +218,7 @@ class TradingAgent:
         ta_text     = technical_analysis.to_llm_text(ta_daily, ta_intraday)
 
         # Broadcast TA signals to UI
-        await _broadcast_queue.put({
+        _safe_broadcast({
             "type": "ta_update",
             "symbol": symbol,
             "daily": ta_daily,
@@ -212,22 +237,19 @@ class TradingAgent:
         # ── Process dynamic watchlist suggestions ─────────────────────────────
         await watchlist_manager.process_decision(symbol, decision, alpaca, db)
 
-        # ── Update watchlist entry ────────────────────────────────────────────
-        # Use verified day-over-day change (already computed in price_data).
-        day_change_pct = price_data.get("day_change_pct", 0.0)   # fraction, e.g. -0.014
-        try:
-            await db.upsert_watchlist(
-                symbol=symbol,
-                sentiment_score=round(day_change_pct, 4),
-                price=price_data.get("close", 0),
-                notes=decision.get("reasoning", ""),
-                is_active=True,
-            )
-        except Exception as exc:
-            logger.warning("[%s] Watchlist upsert failed: %s", symbol, exc)
+        # ── Stage watchlist update (batched at end of cycle) ─────────────────
+        day_change_pct = price_data.get("day_change_pct", 0.0)
+        watchlist_row = {
+            "symbol": symbol,
+            "sentiment_score": round(day_change_pct, 4),
+            "last_price": price_data.get("close", 0),
+            "notes": decision.get("reasoning", ""),
+            "is_active": True,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
 
         # Broadcast thought to UI
-        await _broadcast_queue.put({
+        _safe_broadcast({
             "type": "thought",
             "symbol": symbol,
             "action": decision["action"],
@@ -261,18 +283,18 @@ class TradingAgent:
 
         if not safety.approved:
             logger.info("[%s] Trade rejected: %s", symbol, safety.message)
-            await _broadcast_queue.put({
+            _safe_broadcast({
                 "type": "safety_rejection",
                 "symbol": symbol,
                 "reason": safety.reason.value if safety.reason else "UNKNOWN",
                 "message": safety.message,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
-            return
+            return watchlist_row
 
         final_qty = round(safety.adjusted_qty or proposed_qty, 6)
         if final_qty <= 0:
-            return
+            return watchlist_row
 
         # ── Resolve order side from LONG/SHORT/EXIT + current position ────────
         order_side = self._resolve_order_side(
@@ -281,7 +303,7 @@ class TradingAgent:
         )
         if order_side is None:
             logger.info("[%s] No order needed (already in target state)", symbol)
-            return
+            return watchlist_row
 
         # ── Execute order ─────────────────────────────────────────────────────
         try:
@@ -303,14 +325,14 @@ class TradingAgent:
                 side=order_side,
             )
         except Exception as exc:
-            logger.error("[%s] Order execution failed: %s", symbol, exc)
-            await _broadcast_queue.put({
+            logger.error("[%s] Order execution failed: %s", symbol, exc, exc_info=True)
+            _safe_broadcast({
                 "type": "order_error",
                 "symbol": symbol,
                 "error": str(exc),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
-            return
+            return watchlist_row
 
         # ── Persist ───────────────────────────────────────────────────────────
         try:
@@ -331,7 +353,7 @@ class TradingAgent:
                 thought_log_id=thought_id,
             )
         except Exception as exc:
-            logger.error("[%s] DB persist failed: %s", symbol, exc)
+            logger.error("[%s] DB persist failed: %s", symbol, exc, exc_info=True)
 
         # Broadcast trade alert
         await _broadcast_queue.put({
@@ -351,6 +373,7 @@ class TradingAgent:
             "[%s] ✓ %s order placed: %s %.4f @ $%.2f",
             symbol, decision["action"], order_side, final_qty, current_price,
         )
+        return watchlist_row
 
     @staticmethod
     def _verify_price(

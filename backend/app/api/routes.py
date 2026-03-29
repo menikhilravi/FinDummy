@@ -138,6 +138,8 @@ class WatchlistAddRequest(BaseModel):
 async def manual_add_to_watchlist(body: WatchlistAddRequest):
     """Manually add a ticker — still validates it's a tradable US equity."""
     symbol = body.symbol.upper().strip()
+    if not symbol or not symbol.isalpha() or not (1 <= len(symbol) <= 5):
+        raise HTTPException(status_code=400, detail="Invalid ticker symbol.")
     is_valid = await alpaca.is_tradable_us_equity(symbol)
     if not is_valid:
         raise HTTPException(
@@ -153,10 +155,13 @@ async def manual_add_to_watchlist(body: WatchlistAddRequest):
 @router.delete("/watchlist/{symbol}")
 async def manual_remove_from_watchlist(symbol: str):
     """Manually remove a ticker from the active watchlist."""
+    symbol = symbol.upper().strip()
+    if not symbol or not symbol.isalpha() or not (1 <= len(symbol) <= 5):
+        raise HTTPException(status_code=400, detail="Invalid ticker symbol.")
     from app.agent.watchlist_manager import watchlist_manager as wm
     async with wm._lock:
-        await wm._remove(symbol.upper(), db, reason="manual removal via API")
-    return {"status": "ok", "symbol": symbol.upper(), "active": wm.active}
+        await wm._remove(symbol, db, reason="manual removal via API")
+    return {"status": "ok", "symbol": symbol, "active": wm.active}
 
 
 # ── Market data ───────────────────────────────────────────────────────────────

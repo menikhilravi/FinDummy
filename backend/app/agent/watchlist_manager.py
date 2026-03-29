@@ -155,10 +155,8 @@ class WatchlistManager:
             logger.info("WatchlistManager: %s rejected (not tradable US equity)", symbol)
             return
 
-        self._active.add(symbol)
-        self._hold_counts[symbol] = 0
-        logger.info("WatchlistManager: ✚ added %s", symbol)
-
+        # Persist to DB first — only add to in-memory set on success so a
+        # restart always reflects confirmed state.
         try:
             await db.upsert_watchlist(
                 symbol=symbol,
@@ -168,7 +166,12 @@ class WatchlistManager:
                 is_active=True,
             )
         except Exception as exc:
-            logger.warning("DB upsert for new ticker %s failed: %s", symbol, exc)
+            logger.warning("DB upsert for new ticker %s failed — not adding to active set: %s", symbol, exc)
+            return
+
+        self._active.add(symbol)
+        self._hold_counts[symbol] = 0
+        logger.info("WatchlistManager: ✚ added %s", symbol)
 
         # Broadcast the change via queue (imported lazily to avoid circular import)
         try:

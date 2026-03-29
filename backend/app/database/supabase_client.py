@@ -77,13 +77,13 @@ class SupabaseDB:
             {"exit_price": exit_price, "pnl": pnl, "closed_at": _now()}
         ).eq("order_id", order_id).execute())
 
-    async def get_trade_history(self, limit: int = 50) -> list[dict[str, Any]]:
+    async def get_trade_history(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         usage_tracker.increment("supabase")
         result = await _run(lambda: (
             self._client.table("trade_history")
             .select("*")
             .order("created_at", desc=True)
-            .limit(limit)
+            .range(offset, offset + limit - 1)
             .execute()
         ))
         return result.data or []
@@ -153,6 +153,17 @@ class SupabaseDB:
         }
         usage_tracker.increment("supabase")
         await _run(lambda: self._client.table("watchlist").upsert(row, on_conflict="symbol").execute())
+
+    async def batch_upsert_watchlist(self, rows: list[dict[str, Any]]) -> None:
+        """Upsert multiple watchlist rows in a single Supabase call."""
+        if not rows:
+            return
+        usage_tracker.increment("supabase")
+        await _run(
+            lambda: self._client.table("watchlist")
+            .upsert(rows, on_conflict="symbol")
+            .execute()
+        )
 
     async def get_watchlist(self, active_only: bool = True) -> list[dict[str, Any]]:
         usage_tracker.increment("supabase")

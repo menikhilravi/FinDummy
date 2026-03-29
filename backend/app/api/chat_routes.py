@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.data.gemini_client import gemini_client
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/chat")
 
@@ -36,4 +40,5 @@ async def chat(body: ChatRequest):
         )
         return ChatResponse(**result)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Gemini error: {exc}")
+        logger.error("Gemini chat error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="AI chat service unavailable. Try again shortly.")

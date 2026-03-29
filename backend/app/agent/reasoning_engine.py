@@ -10,6 +10,7 @@ It returns a structured JSON decision with a full internal monologue.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -87,19 +88,25 @@ class ReasoningEngine:
         )
 
         try:
-            response = await self._client.chat.completions.create(
-                model=settings.GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": user_message},
-                ],
-                temperature=0.3,
-                max_tokens=1024,
-                response_format={"type": "json_object"},
+            response = await asyncio.wait_for(
+                self._client.chat.completions.create(
+                    model=settings.GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": _SYSTEM_PROMPT},
+                        {"role": "user", "content": user_message},
+                    ],
+                    temperature=0.3,
+                    max_tokens=1024,
+                    response_format={"type": "json_object"},
+                ),
+                timeout=30.0,
             )
             usage_tracker.increment("groq")
             raw = response.choices[0].message.content or "{}"
             decision = json.loads(raw)
+        except asyncio.TimeoutError:
+            logger.error("Groq inference timed out for %s after 30s", symbol)
+            decision = self._default_hold(symbol, "LLM inference timeout")
         except json.JSONDecodeError as exc:
             logger.error("Groq returned non-JSON for %s: %s", symbol, exc)
             decision = self._default_hold(symbol, "JSON parse error from LLM")
