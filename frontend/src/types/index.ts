@@ -173,7 +173,7 @@ export interface EquitySnapshot {
 export interface MonologueEntry {
   id: string;
   symbol: string;
-  action: TradeAction;
+  action: TradeDirection;
   confidence: number;
   thought_log: ThoughtLog;
   reasoning: string;
