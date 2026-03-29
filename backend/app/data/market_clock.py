@@ -2,14 +2,20 @@
 MarketClock — US market session awareness.
 
 States:
-  OPEN     — regular hours 09:30–16:00 ET weekdays
-  EXTENDED — pre/after-market 04:00–09:30 and 16:00–20:00 ET weekdays
-  CLOSED   — weekends, holidays, and overnight
+  OPEN     — regular hours 09:30–16:00 ET, Mon–Fri
+  EXTENDED — all other weekday hours (pre-market, after-hours, and overnight)
+             Analysis and trading run continuously; Alpaca will queue or reject
+             orders it cannot fill outside its supported session.
+  CLOSED   — Saturday and Sunday only
+
+This mirrors Robinhood's 24-hour weekday market: the agent is always active
+Mon–Fri, with the loop running faster during regular hours and slower during
+extended/overnight periods.
 
 Agent loop intervals per state:
   OPEN     →  60 s  (full cycle: analysis + trading)
-  EXTENDED → 180 s  (analysis + trading, lower frequency)
-  CLOSED   → 600 s  (news/watchlist discovery only, no trades)
+  EXTENDED → 180 s  (analysis + trading at lower frequency)
+  CLOSED   → 600 s  (idle — weekends only)
 
 Uses Alpaca's /v2/clock as the authoritative source (handles holidays
 automatically), with a timezone-based fallback if the API is unreachable.
@@ -18,7 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, time, timezone
+from datetime import datetime, time
 from enum import Enum
 from zoneinfo import ZoneInfo
 
@@ -28,8 +34,6 @@ ET = ZoneInfo("America/New_York")
 
 _REGULAR_OPEN  = time(9, 30)
 _REGULAR_CLOSE = time(16, 0)
-_EXTENDED_START = time(4, 0)
-_EXTENDED_END   = time(20, 0)
 
 
 class MarketState(str, Enum):
@@ -82,11 +86,10 @@ class MarketClock:
         )
         if clock.is_open:
             return MarketState.OPEN
-        # Market is closed per Alpaca — check if we're in extended window
-        now_et = datetime.now(ET).time()
-        if _EXTENDED_START <= now_et < _REGULAR_OPEN:
-            return MarketState.EXTENDED
-        if _REGULAR_CLOSE <= now_et < _EXTENDED_END:
+        # Alpaca says market is closed (extended hours, holiday, or overnight).
+        # On weekdays we stay EXTENDED so the agent keeps running; weekends → CLOSED.
+        now_et = datetime.now(ET)
+        if now_et.weekday() < 5:   # Mon=0 … Fri=4
             return MarketState.EXTENDED
         return MarketState.CLOSED
 
@@ -94,16 +97,14 @@ class MarketClock:
         now = datetime.now(ET)
         if now.weekday() >= 5:          # Saturday = 5, Sunday = 6
             return MarketState.CLOSED
-        t = now.time()
-        if _REGULAR_OPEN <= t < _REGULAR_CLOSE:
+        # Weekday: OPEN during regular session, EXTENDED for all other hours
+        if _REGULAR_OPEN <= now.time() < _REGULAR_CLOSE:
             return MarketState.OPEN
-        if _EXTENDED_START <= t < _EXTENDED_END:
-            return MarketState.EXTENDED
-        return MarketState.CLOSED
+        return MarketState.EXTENDED
 
     @property
     def trading_allowed(self) -> bool:
-        """True during OPEN and EXTENDED hours."""
+        """True during OPEN and EXTENDED hours (i.e. all weekday hours)."""
         return self._last_state in (MarketState.OPEN, MarketState.EXTENDED)
 
     def loop_interval(self) -> int:
