@@ -20,6 +20,7 @@ from google import genai
 from google.genai import types
 
 from app.core.config import settings
+from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ class GeminiClient:
                     max_output_tokens=2048,
                 ),
             )
+            usage_tracker.increment("gemini")
             reply = response.text or ""
         except Exception as exc:
             logger.error("Gemini API error: %s", exc)

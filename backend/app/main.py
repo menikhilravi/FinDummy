@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.agent.trading_agent import get_broadcast_queue, trading_agent
 from app.api.routes import router
 from app.api.chat_routes import router as chat_router
+from app.api.usage_routes import router as usage_router
 from app.api.websocket import broadcast_loop, ws_endpoint
 from app.core.config import settings
 
@@ -42,6 +43,7 @@ app.add_middleware(
 # ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(router)
 app.include_router(chat_router)
+app.include_router(usage_router)
 
 
 @app.websocket("/ws")

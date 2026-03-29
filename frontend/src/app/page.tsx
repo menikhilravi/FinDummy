@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Bot } from "lucide-react";
+import { Bot, BarChart2, Activity } from "lucide-react";
 
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTradeStore } from "@/hooks/useTradeStore";
 import { getAccount, getWatchlist } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 import { InternalMonologue } from "@/components/dashboard/InternalMonologue";
 import { TradeAlerts, TradeFeed } from "@/components/dashboard/TradeAlerts";
@@ -15,8 +16,10 @@ import { PanicButton } from "@/components/dashboard/PanicButton";
 import { WatchlistTable } from "@/components/dashboard/WatchlistTable";
 import { StatsHUD } from "@/components/dashboard/StatsHUD";
 import { AIChat } from "@/components/dashboard/AIChat";
+import { UsageDashboard } from "@/components/dashboard/UsageDashboard";
 
 export default function DashboardPage() {
+  const [view, setView] = useState<"trading" | "usage">("trading");
   const handleWsEvent = useTradeStore((s) => s.handleWsEvent);
   const setWsStatus = useTradeStore((s) => s.setWsStatus);
   const setAccount = useTradeStore((s) => s.setAccount);
@@ -72,12 +75,45 @@ export default function DashboardPage() {
           <TickerMarquee />
         </div>
 
+        {/* View toggle */}
+        <div className="flex items-center gap-1 p-0.5 rounded-lg border border-bg-border bg-bg-surface mr-2">
+          <button
+            onClick={() => setView("trading")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono transition-all",
+              view === "trading"
+                ? "bg-neon-green/10 text-neon-green border border-neon-green/30"
+                : "text-text-muted hover:text-text-secondary"
+            )}
+          >
+            <Activity className="w-3 h-3" />
+            TRADING
+          </button>
+          <button
+            onClick={() => setView("usage")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-mono transition-all",
+              view === "usage"
+                ? "bg-neon-blue/10 text-neon-blue border border-neon-blue/30"
+                : "text-text-muted hover:text-text-secondary"
+            )}
+          >
+            <BarChart2 className="w-3 h-3" />
+            USAGE
+          </button>
+        </div>
+
         {/* Panic button in header */}
         <PanicButton />
       </header>
 
       {/* ── Main layout ────────────────────────────────────────────────────── */}
-      <main className="p-4 grid grid-cols-12 gap-4" style={{ height: "calc(100vh - 64px)" }}>
+      {view === "usage" && (
+        <main style={{ height: "calc(100vh - 64px)" }} className="overflow-y-auto">
+          <UsageDashboard />
+        </main>
+      )}
+      <main className={cn("p-4 grid grid-cols-12 gap-4", view !== "trading" && "hidden")} style={{ height: "calc(100vh - 64px)" }}>
 
         {/* ── Left column (4/12): Stats + Watchlist ───────────────────────── */}
         <motion.aside

@@ -11,6 +11,7 @@ from typing import Any
 import finnhub
 
 from app.core.config import settings
+from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class FinnhubClient:
     ) -> list[dict[str, Any]]:
         to_date = datetime.now(timezone.utc)
         from_date = to_date - timedelta(days=days)
+        usage_tracker.increment("finnhub")
         raw = await asyncio.to_thread(
             self._client.company_news,
             symbol,
@@ -85,6 +87,7 @@ class FinnhubClient:
         }
 
     async def get_market_news(self) -> list[dict[str, Any]]:
+        usage_tracker.increment("finnhub")
         raw = await asyncio.to_thread(self._client.general_news, "general")
         news = []
         for item in (raw or [])[:8]:

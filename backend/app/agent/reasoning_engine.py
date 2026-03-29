@@ -18,6 +18,7 @@ from typing import Any
 from groq import AsyncGroq
 
 from app.core.config import settings
+from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,7 @@ class ReasoningEngine:
                 max_tokens=1024,
                 response_format={"type": "json_object"},
             )
+            usage_tracker.increment("groq")
             raw = response.choices[0].message.content or "{}"
             decision = json.loads(raw)
         except json.JSONDecodeError as exc:

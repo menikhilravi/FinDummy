@@ -53,6 +53,11 @@ export const emergencyShutdown = () =>
     method: "POST",
   });
 
+// ── Usage tracking ────────────────────────────────────────────────────────────
+
+export const getUsage = () =>
+  request<Record<string, any>>("/api/v1/usage");
+
 // ── Health ─────────────────────────────────────────────────────────────────────
 
 export const getHealth = () =>

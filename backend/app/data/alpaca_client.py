@@ -18,6 +18,7 @@ from alpaca.trading.enums import AssetClass, OrderSide, TimeInForce
 from alpaca.trading.requests import GetAssetsRequest, GetOrdersRequest, MarketOrderRequest
 
 from app.core.config import settings
+from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ def _rate_guard(fn):
             await asyncio.sleep(wait)
 
         _call_timestamps.append(time.monotonic())
+        usage_tracker.increment("alpaca")
         return await fn(*args, **kwargs)
     return wrapper
 

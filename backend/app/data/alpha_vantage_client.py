@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class AlphaVantageClient:
 
     async def _get(self, params: dict) -> dict:
         params["apikey"] = self._key
+        usage_tracker.increment("alpha_vantage")
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(_BASE, params=params)
             resp.raise_for_status()

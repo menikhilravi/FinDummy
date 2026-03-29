@@ -15,6 +15,7 @@ from typing import Any
 from supabase import Client, create_client
 
 from app.core.config import settings
+from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class SupabaseDB:
             "created_at": _now(),
             "trading_mode": settings.TRADING_MODE,
         }
+        usage_tracker.increment("supabase")
         result = self._client.table("trade_history").insert(row).execute()
         return result.data[0] if result.data else row
 
@@ -69,6 +71,7 @@ class SupabaseDB:
         ).eq("order_id", order_id).execute()
 
     async def get_trade_history(self, limit: int = 50) -> list[dict[str, Any]]:
+        usage_tracker.increment("supabase")
         result = (
             self._client.table("trade_history")
             .select("*")
