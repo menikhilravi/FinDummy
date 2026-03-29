@@ -207,15 +207,18 @@ class TradingAgent:
         await watchlist_manager.process_decision(symbol, decision, alpaca, db)
 
         # ── Update watchlist entry ────────────────────────────────────────────
-        sentiment_score = (
-            sum(n.get("sentiment_score", 0) for n in news) / len(news)
-            if news else 0.0
+        # Use intraday price change (close vs open) so ▲/▼ reflects actual
+        # price direction, not news sentiment.
+        bar_open  = price_data.get("open", 0)
+        bar_close = price_data.get("close", 0)
+        intraday_change = (
+            (bar_close - bar_open) / bar_open if bar_open else 0.0
         )
         try:
             await db.upsert_watchlist(
                 symbol=symbol,
-                sentiment_score=round(sentiment_score, 3),
-                price=price_data.get("close", 0),
+                sentiment_score=round(intraday_change, 4),
+                price=bar_close,
                 notes=decision.get("reasoning", ""),
                 is_active=True,
             )

@@ -190,7 +190,7 @@ function TickerMarquee() {
               ${entry.last_price?.toFixed(2) ?? "—"}
             </span>
             <span className={`text-[10px] font-mono ${isPos ? "text-neon-green" : "text-neon-red"}`}>
-              {isPos ? "▲" : "▼"}
+              {isPos ? "▲" : "▼"} {Math.abs(entry.sentiment_score * 100).toFixed(2)}%
             </span>
           </div>
         );

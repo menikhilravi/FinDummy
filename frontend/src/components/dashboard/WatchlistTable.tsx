@@ -30,7 +30,7 @@ export function WatchlistTable() {
 
       {/* Table header */}
       <div className="grid grid-cols-3 px-4 py-1.5 border-b border-bg-border/50">
-        {["TICKER", "PRICE", "SENT"].map((h) => (
+        {["TICKER", "PRICE", "CHG"].map((h) => (
           <span key={h} className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
             {h}
           </span>
@@ -64,15 +64,15 @@ export function WatchlistTable() {
                   </span>
 
                   <div className={cn("flex items-center gap-1 text-xs font-mono", sentClass)}>
-                    {sent > 0.1 ? (
+                    {sent > 0.001 ? (
                       <TrendingUp className="w-3 h-3" />
-                    ) : sent < -0.1 ? (
+                    ) : sent < -0.001 ? (
                       <TrendingDown className="w-3 h-3" />
                     ) : (
                       <Minus className="w-3 h-3" />
                     )}
                     {sent > 0 ? "+" : ""}
-                    {sent.toFixed(2)}
+                    {(sent * 100).toFixed(2)}%
                   </div>
                 </motion.div>
               );
