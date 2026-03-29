@@ -59,16 +59,16 @@ export default function DashboardPage() {
           </div>
           <div>
             <h1 className="text-sm font-mono font-bold text-text-primary text-glow-green">
-              NEURAL TRADER
+              FINDUMMY
             </h1>
             <p className="text-[10px] font-mono text-text-muted">
-              AI-Powered Autonomous Agent
+              AI-Powered Trading Agent
             </p>
           </div>
         </div>
 
         {/* Ticker marquee */}
-        <div className="flex-1 mx-6 overflow-hidden">
+        <div className="flex-1 mx-6 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]">
           <TickerMarquee />
         </div>
 
@@ -139,23 +139,21 @@ function TickerMarquee() {
     );
   }
 
+  const items = [...watchlist, ...watchlist]; // duplicate for seamless loop
+
   return (
-    <div className="flex gap-6 overflow-hidden">
-      {watchlist.map((entry) => {
+    <div className="flex gap-6 animate-marquee whitespace-nowrap">
+      {items.map((entry, i) => {
         const isPos = entry.sentiment_score >= 0;
         return (
-          <div key={entry.symbol} className="flex items-center gap-1.5 shrink-0">
+          <div key={`${entry.symbol}-${i}`} className="flex items-center gap-1.5 shrink-0">
             <span className="text-[11px] font-mono font-semibold text-text-primary">
               {entry.symbol}
             </span>
             <span className="text-[11px] font-mono text-text-secondary">
               ${entry.last_price?.toFixed(2) ?? "—"}
             </span>
-            <span
-              className={`text-[10px] font-mono ${
-                isPos ? "text-neon-green" : "text-neon-red"
-              }`}
-            >
+            <span className={`text-[10px] font-mono ${isPos ? "text-neon-green" : "text-neon-red"}`}>
               {isPos ? "▲" : "▼"}
             </span>
           </div>

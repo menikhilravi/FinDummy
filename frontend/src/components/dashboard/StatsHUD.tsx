@@ -139,7 +139,7 @@ export function StatsHUD() {
                 {stat.label}
               </span>
             </div>
-            <span className={cn("font-mono font-bold text-lg", stat.color)}>
+            <span className={cn("font-mono font-bold text-sm truncate", stat.color)}>
               {stat.value}
             </span>
           </motion.div>

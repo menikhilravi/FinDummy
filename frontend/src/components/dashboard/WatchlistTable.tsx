@@ -29,8 +29,8 @@ export function WatchlistTable() {
       </div>
 
       {/* Table header */}
-      <div className="grid grid-cols-4 px-4 py-1.5 border-b border-bg-border/50">
-        {["TICKER", "PRICE", "SENT", "SIGNAL"].map((h) => (
+      <div className="grid grid-cols-3 px-4 py-1.5 border-b border-bg-border/50">
+        {["TICKER", "PRICE", "SENT"].map((h) => (
           <span key={h} className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
             {h}
           </span>
@@ -53,7 +53,7 @@ export function WatchlistTable() {
                   layout
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="grid grid-cols-4 items-center px-4 py-2.5 border-b border-bg-border/30 hover:bg-bg-hover/20 transition-colors"
+                  className="grid grid-cols-3 items-center px-4 py-2.5 border-b border-bg-border/30 hover:bg-bg-hover/20 transition-colors"
                 >
                   <span className="font-mono font-bold text-text-primary text-sm">
                     {entry.symbol}
@@ -73,10 +73,6 @@ export function WatchlistTable() {
                     )}
                     {sent > 0 ? "+" : ""}
                     {sent.toFixed(2)}
-                  </div>
-
-                  <div className="text-[10px] font-mono text-text-muted truncate pr-2" title={entry.notes}>
-                    {entry.notes?.slice(0, 30) ?? "—"}
                   </div>
                 </motion.div>
               );

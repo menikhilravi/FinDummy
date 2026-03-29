@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Trader — Neural Markets",
+  title: "FinDummy — AI Trading Agent",
   description: "Autonomous AI trading agent dashboard",
 };
 

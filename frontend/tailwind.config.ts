@@ -43,8 +43,13 @@ const config: Config = {
         "glow-green": "glow-green 1.5s ease-in-out infinite alternate",
         "glow-red": "glow-red 1.5s ease-in-out infinite alternate",
         "typing": "typing 0.05s steps(1) infinite",
+        "marquee": "marquee 30s linear infinite",
       },
       keyframes: {
+        "marquee": {
+          "0%": { transform: "translateX(0%)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
         "pulse-neon": {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.5" },
