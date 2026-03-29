@@ -279,7 +279,12 @@ export function AIChat() {
               </div>
               <div>
                 <p className="text-xs font-mono font-bold text-text-primary">NeuroTrader AI</p>
-                <p className="text-[10px] font-mono text-text-muted">Finance questions only</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-[10px] font-mono text-text-muted">Finance questions only</p>
+                  <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                    Powered by Gemini
+                  </span>
+                </div>
               </div>
               <button
                 onClick={clearChat}
