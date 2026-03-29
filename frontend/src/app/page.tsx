@@ -25,7 +25,7 @@ export default function DashboardPage() {
   const setAccount = useTradeStore((s) => s.setAccount);
   const setWatchlist = useTradeStore((s) => s.setWatchlist);
 
-  const { status } = useWebSocket({
+  const { status, reconnect, maxRetriesReached } = useWebSocket({
     onMessage: handleWsEvent,
   });
 
@@ -106,6 +106,19 @@ export default function DashboardPage() {
         {/* Panic button in header */}
         <PanicButton />
       </header>
+
+      {/* ── Reconnect banner ───────────────────────────────────────────────── */}
+      {maxRetriesReached && (
+        <div className="flex items-center justify-between px-6 py-2 bg-neon-red/10 border-b border-neon-red/30 text-neon-red font-mono text-xs">
+          <span>WebSocket disconnected — live updates paused.</span>
+          <button
+            onClick={reconnect}
+            className="px-3 py-1 rounded border border-neon-red/50 hover:bg-neon-red/20 transition-colors"
+          >
+            Reconnect
+          </button>
+        </div>
+      )}
 
       {/* ── Main layout ────────────────────────────────────────────────────── */}
       {view === "usage" && (

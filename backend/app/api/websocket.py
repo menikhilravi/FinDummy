@@ -52,17 +52,25 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+_WS_IDLE_TIMEOUT = 600  # seconds — close zombie connections after 10 min of silence
+
+
 async def ws_endpoint(websocket: WebSocket) -> None:
     """FastAPI WebSocket endpoint handler — mount at /ws."""
     await manager.connect(websocket)
     try:
         while True:
-            # Keep connection alive; we only push data (no client->server protocol needed)
-            await websocket.receive_text()
+            try:
+                await asyncio.wait_for(websocket.receive_text(), timeout=_WS_IDLE_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.info("WS client idle for %ds — closing.", _WS_IDLE_TIMEOUT)
+                await websocket.close(code=1000, reason="Idle timeout")
+                break
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        pass
     except Exception as exc:
         logger.error("WebSocket error: %s", exc)
+    finally:
         manager.disconnect(websocket)
 
 
@@ -74,9 +82,11 @@ async def broadcast_loop(queue: asyncio.Queue[dict]) -> None:
     while True:
         try:
             payload = await queue.get()
-            await manager.broadcast(payload)
-            queue.task_done()
         except asyncio.CancelledError:
             raise
+        try:
+            await manager.broadcast(payload)
         except Exception as exc:
             logger.error("Broadcast loop error: %s", exc)
+        finally:
+            queue.task_done()

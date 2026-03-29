@@ -32,10 +32,15 @@ app = FastAPI(
     description="Autonomous trading agent with real-time WebSocket dashboard.",
 )
 
-# ── CORS (allow Next.js dev server) ──────────────────────────────────────────
+# ── CORS ─────────────────────────────────────────────────────────────────────
+_allowed_origins = [settings.FRONTEND_ORIGIN]
+if settings.TRADING_MODE == "PAPER":
+    # Allow local dev server only in paper-trading (non-production) mode
+    _allowed_origins += ["http://localhost:3000", "https://localhost:3000"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_ORIGIN, "http://localhost:3000", "https://localhost:3000"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

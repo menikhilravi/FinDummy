@@ -129,7 +129,8 @@ class ReasoningEngine:
         ta_text: str,
     ) -> str:
         news_summary = "\n".join(
-            f"  [{n.get('sentiment_score', 0):+.2f}] {n.get('headline', '')}"
+            f"  [{n.get('sentiment_score', 0):+.2f}] "
+            f"{n.get('headline', '')[:200].replace(chr(10), ' ').replace(chr(13), ' ')}"
             for n in news[:5]
         ) or "  No recent news available."
 

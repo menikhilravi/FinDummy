@@ -80,7 +80,7 @@ class SafetyManager:
         """
         self._daily.reset_if_new_day()
 
-        if action.upper() in ("HOLD", "EXIT") and action.upper() == "HOLD":
+        if action.upper() == "HOLD":
             return SafetyDecision(
                 approved=False,
                 reason=RejectionReason.HOLD_SIGNAL,

@@ -3,7 +3,11 @@ REST API routes — mounted under /api/v1
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 
 from app.agent.safety_manager import safety_manager
@@ -58,7 +62,8 @@ async def get_account():
     try:
         return await alpaca.get_account()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 @router.get("/positions")
@@ -66,7 +71,8 @@ async def get_positions():
     try:
         return await alpaca.get_positions()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 @router.get("/orders/today")
@@ -74,7 +80,8 @@ async def get_today_orders():
     try:
         return await alpaca.get_today_orders()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 # ── Trade history & logs ──────────────────────────────────────────────────────
@@ -84,7 +91,8 @@ async def get_trades(limit: int = 50):
     try:
         return await db.get_trade_history(limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 @router.get("/thoughts")
@@ -92,7 +100,8 @@ async def get_thoughts(limit: int = 20):
     try:
         return await db.get_thought_logs(limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 @router.get("/equity/history")
@@ -100,7 +109,8 @@ async def get_equity_history(limit: int = 200):
     try:
         return await db.get_equity_history(limit=limit)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 # ── Watchlist ─────────────────────────────────────────────────────────────────
@@ -110,7 +120,8 @@ async def get_watchlist(active_only: bool = True):
     try:
         return await db.get_watchlist(active_only=active_only)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 @router.get("/watchlist/live")
@@ -155,7 +166,8 @@ async def get_bar(symbol: str):
     try:
         return await alpaca.get_latest_bar(symbol.upper())
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 @router.get("/market/news/{symbol}")
@@ -163,7 +175,8 @@ async def get_news(symbol: str):
     try:
         return await finnhub_client.get_company_news(symbol.upper())
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 @router.get("/market/macro")
@@ -171,7 +184,8 @@ async def get_macro():
     try:
         return await alpha_vantage.get_macro_snapshot()
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("API error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Upstream service error. Check server logs.")
 
 
 # ── Safety stats ──────────────────────────────────────────────────────────────

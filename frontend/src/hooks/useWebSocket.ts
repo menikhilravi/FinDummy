@@ -17,6 +17,7 @@ export function useWebSocket({
   maxReconnects = 10,
 }: UseWebSocketOptions = {}) {
   const [status, setStatus] = useState<Status>("disconnected");
+  const [maxRetriesReached, setMaxRetriesReached] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectCount = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,6 +40,7 @@ export function useWebSocket({
     ws.onopen = () => {
       setStatus("connected");
       reconnectCount.current = 0;
+      setMaxRetriesReached(false);
     };
 
     ws.onmessage = (e) => {
@@ -63,9 +65,19 @@ export function useWebSocket({
           reconnectDelay * Math.pow(1.5, reconnectCount.current);
         reconnectCount.current += 1;
         reconnectTimer.current = setTimeout(connect, delay);
+      } else {
+        setMaxRetriesReached(true);
       }
     };
   }, [reconnectDelay, maxReconnects]);
+
+  const reconnect = useCallback(() => {
+    if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+    wsRef.current?.close();
+    reconnectCount.current = 0;
+    setMaxRetriesReached(false);
+    connect();
+  }, [connect]);
 
   useEffect(() => {
     connect();
@@ -75,5 +87,5 @@ export function useWebSocket({
     };
   }, [connect]);
 
-  return { status };
+  return { status, reconnect, maxRetriesReached };
 }

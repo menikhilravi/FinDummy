@@ -179,8 +179,10 @@ class WatchlistManager:
                 "symbol": symbol,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
-        except Exception:
-            pass
+        except ImportError:
+            logger.warning("Could not import broadcast queue for watchlist add event.")
+        except Exception as exc:
+            logger.warning("Failed to broadcast watchlist add for %s: %s", symbol, exc)
 
     async def _remove(
         self, symbol: str, db: "SupabaseDB", reason: str = ""
@@ -211,8 +213,10 @@ class WatchlistManager:
                 "reason": reason,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             })
-        except Exception:
-            pass
+        except ImportError:
+            logger.warning("Could not import broadcast queue for watchlist remove event.")
+        except Exception as exc:
+            logger.warning("Failed to broadcast watchlist remove for %s: %s", symbol, exc)
 
 
 watchlist_manager = WatchlistManager()
