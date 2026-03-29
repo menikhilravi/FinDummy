@@ -17,10 +17,15 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import AssetClass, OrderSide, TimeInForce
 from alpaca.trading.requests import GetAssetsRequest, GetOrdersRequest, MarketOrderRequest
 
+from app.core.circuit_breaker import CircuitBreaker, CircuitBreakerOpen  # noqa: F401
 from app.core.config import settings
 from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
+
+# ── Circuit breaker ───────────────────────────────────────────────────────────
+# Opens after 5 consecutive failures; probes again after 60 s.
+_circuit = CircuitBreaker("alpaca", failure_threshold=5, reset_timeout=60.0)
 
 # ── Rate-limit tracking ───────────────────────────────────────────────────────
 _ALPACA_CALL_LIMIT = 200          # calls per minute (free tier)
@@ -28,10 +33,13 @@ _call_timestamps: list[float] = []
 
 
 def _rate_guard(fn):
-    """Exponential back-off when approaching Alpaca rate limits."""
+    """Rate-limit back-off + circuit-breaker for every Alpaca API call."""
     @wraps(fn)
     async def wrapper(*args, **kwargs):
         import time
+        # Circuit-breaker check — raises CircuitBreakerOpen when service is down.
+        _circuit._check()
+
         now = time.monotonic()
         # Purge timestamps older than 60 s
         global _call_timestamps
@@ -45,7 +53,15 @@ def _rate_guard(fn):
 
         _call_timestamps.append(time.monotonic())
         usage_tracker.increment("alpaca")
-        return await fn(*args, **kwargs)
+        try:
+            result = await fn(*args, **kwargs)
+            _circuit._record_success()
+            return result
+        except CircuitBreakerOpen:
+            raise
+        except Exception as exc:
+            _circuit._record_failure(exc)
+            raise
     return wrapper
 
 

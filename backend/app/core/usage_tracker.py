@@ -160,17 +160,24 @@ class UsageTracker:
             logger.warning("UsageTracker: could not load from DB (starting fresh): %s", exc)
 
     async def flush_to_db(self) -> None:
-        """Write dirty services to Supabase. Called by the background task."""
+        """Write dirty services to Supabase. Called by the background task.
+
+        Snapshot is taken inside the lock but _dirty is NOT cleared until the
+        async write succeeds.  This prevents counts from being silently lost if
+        the Supabase call fails after the flag was already cleared.
+        """
+        # Step 1 — capture a snapshot of dirty services without touching _dirty yet.
         with self._lock:
-            dirty: dict[str, dict] = {}
-            for svc, usage in self._services.items():
-                if usage._dirty:
-                    dirty[svc] = usage.snapshot()
-                    usage._dirty = False
+            dirty: dict[str, dict] = {
+                svc: usage.snapshot()
+                for svc, usage in self._services.items()
+                if usage._dirty
+            }
 
         if not dirty:
             return
 
+        # Step 2 — attempt the async write outside the lock.
         try:
             db = await asyncio.to_thread(self._get_db)
             today = date.today().isoformat()
@@ -188,9 +195,14 @@ class UsageTracker:
                         on_conflict="service",
                     ).execute()
                 )
+            # Step 3 — only clear _dirty after a confirmed write.
+            with self._lock:
+                for svc in dirty:
+                    self._services[svc]._dirty = False
             logger.debug("UsageTracker: flushed %d service(s) to Supabase.", len(dirty))
         except Exception as exc:
-            logger.warning("UsageTracker: flush failed (counts safe in memory): %s", exc)
+            # Leave _dirty=True so the next flush cycle retries automatically.
+            logger.warning("UsageTracker: flush failed (will retry next cycle): %s", exc)
 
     async def run_flush_loop(self, interval: int = 60) -> None:
         """Background coroutine: flush dirty counts every `interval` seconds."""
