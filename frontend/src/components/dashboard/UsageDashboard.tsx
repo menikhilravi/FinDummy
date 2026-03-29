@@ -16,6 +16,7 @@ interface ServiceData {
   color: string;
   calls_session: number;
   calls_today: number;
+  calls_total: number;
   daily_pct: number | null;
 }
 
@@ -110,7 +111,7 @@ function ServiceCard({ id, data }: { id: string; data: ServiceData }) {
       )}
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-bg-border/50">
+      <div className="grid grid-cols-3 gap-2 pt-1 border-t border-bg-border/50">
         <div>
           <p className="text-[9px] font-mono text-text-muted uppercase tracking-wider">Session</p>
           <p className="text-sm font-mono font-bold text-text-primary">
@@ -118,7 +119,13 @@ function ServiceCard({ id, data }: { id: string; data: ServiceData }) {
           </p>
         </div>
         <div>
-          <p className="text-[9px] font-mono text-text-muted uppercase tracking-wider">Rate limit</p>
+          <p className="text-[9px] font-mono text-text-muted uppercase tracking-wider">All-time</p>
+          <p className="text-sm font-mono font-bold text-text-secondary">
+            {data.calls_total.toLocaleString()}
+          </p>
+        </div>
+        <div>
+          <p className="text-[9px] font-mono text-text-muted uppercase tracking-wider">Rate cap</p>
           <p className="text-sm font-mono font-bold text-text-secondary">
             {data.rpm_limit ? `${data.rpm_limit}/min` : "—"}
           </p>
@@ -152,13 +159,17 @@ export function UsageDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const totalCalls = data
-    ? Object.values(data).reduce((sum, s) => sum + s.calls_session, 0)
+  const totalToday = data
+    ? Object.values(data).reduce((sum, s) => sum + s.calls_today, 0)
+    : 0;
+  const totalAllTime = data
+    ? Object.values(data).reduce((sum, s) => sum + s.calls_total, 0)
     : 0;
 
   const criticalServices = data
     ? Object.values(data).filter((s) => s.daily_pct !== null && s.daily_pct >= 90).length
     : 0;
+
 
   return (
     <div className="p-4 flex flex-col gap-4 overflow-y-auto h-full">
@@ -194,8 +205,13 @@ export function UsageDashboard() {
       {/* Summary strip */}
       <div className="glass-card rounded-xl px-4 py-3 flex items-center gap-6">
         <div>
-          <p className="text-[9px] font-mono text-text-muted uppercase tracking-wider">Total calls this session</p>
-          <p className="text-xl font-mono font-bold text-neon-green">{totalCalls.toLocaleString()}</p>
+          <p className="text-[9px] font-mono text-text-muted uppercase tracking-wider">Calls today (all services)</p>
+          <p className="text-xl font-mono font-bold text-neon-green">{totalToday.toLocaleString()}</p>
+        </div>
+        <div className="h-8 w-px bg-bg-border" />
+        <div>
+          <p className="text-[9px] font-mono text-text-muted uppercase tracking-wider">All-time total</p>
+          <p className="text-xl font-mono font-bold text-neon-blue">{totalAllTime.toLocaleString()}</p>
         </div>
         <div className="h-8 w-px bg-bg-border" />
         <div>

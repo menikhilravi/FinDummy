@@ -18,6 +18,7 @@ from app.api.chat_routes import router as chat_router
 from app.api.usage_routes import router as usage_router
 from app.api.websocket import broadcast_loop, ws_endpoint
 from app.core.config import settings
+from app.core.usage_tracker import usage_tracker
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,26 +55,34 @@ async def websocket_route(websocket: WebSocket):
 # ── Startup / Shutdown ────────────────────────────────────────────────────────
 
 _broadcast_task: asyncio.Task | None = None
+_usage_flush_task: asyncio.Task | None = None
 
 
 @app.on_event("startup")
 async def on_startup():
-    global _broadcast_task
+    global _broadcast_task, _usage_flush_task
+    # Restore persisted API usage counts before anything else
+    await usage_tracker.load_from_db()
     queue = get_broadcast_queue()
     _broadcast_task = asyncio.create_task(broadcast_loop(queue), name="ws-broadcaster")
-    # Auto-start the agent
+    _usage_flush_task = asyncio.create_task(
+        usage_tracker.run_flush_loop(interval=60), name="usage-flush"
+    )
     trading_agent.start()
     logger.info("Application started. Trading mode: %s", settings.TRADING_MODE)
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    global _broadcast_task
+    global _broadcast_task, _usage_flush_task
     await trading_agent.stop()
-    if _broadcast_task:
-        _broadcast_task.cancel()
-        try:
-            await _broadcast_task
-        except asyncio.CancelledError:
-            pass
+    # Final flush before shutdown so no counts are lost
+    await usage_tracker.flush_to_db()
+    for task in (_broadcast_task, _usage_flush_task):
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     logger.info("Application shut down cleanly.")
