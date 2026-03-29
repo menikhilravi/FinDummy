@@ -152,9 +152,10 @@ class TradingAgent:
         self, symbol: str, account: dict, macro: dict, trading_allowed: bool
     ) -> None:
         try:
-            price_data, news, current_position, asset, daily_bars, intraday_bars = \
+            price_data, fh_quote, news, current_position, asset, daily_bars, intraday_bars = \
                 await asyncio.gather(
                     alpaca.get_latest_bar(symbol),
+                    finnhub_client.get_quote(symbol),
                     finnhub_client.get_company_news(symbol),
                     alpaca.get_position(symbol),
                     alpaca.get_asset(symbol),
@@ -165,6 +166,8 @@ class TradingAgent:
             if isinstance(price_data, Exception):
                 logger.warning("[%s] Price data error: %s", symbol, price_data)
                 return
+            if isinstance(fh_quote, Exception):
+                fh_quote = None
             if isinstance(news, Exception):
                 news = []
             if isinstance(current_position, Exception):
@@ -178,6 +181,9 @@ class TradingAgent:
         except Exception as exc:
             logger.error("[%s] Data fetch error: %s", symbol, exc)
             return
+
+        # ── Multi-source price verification ───────────────────────────────────
+        price_data = self._verify_price(symbol, price_data, fh_quote, daily_bars)
 
         shortable = bool(asset.get("shortable", False)) if asset else False
 
@@ -207,18 +213,13 @@ class TradingAgent:
         await watchlist_manager.process_decision(symbol, decision, alpaca, db)
 
         # ── Update watchlist entry ────────────────────────────────────────────
-        # Use intraday price change (close vs open) so ▲/▼ reflects actual
-        # price direction, not news sentiment.
-        bar_open  = price_data.get("open", 0)
-        bar_close = price_data.get("close", 0)
-        intraday_change = (
-            (bar_close - bar_open) / bar_open if bar_open else 0.0
-        )
+        # Use verified day-over-day change (already computed in price_data).
+        day_change_pct = price_data.get("day_change_pct", 0.0)   # fraction, e.g. -0.014
         try:
             await db.upsert_watchlist(
                 symbol=symbol,
-                sentiment_score=round(intraday_change, 4),
-                price=bar_close,
+                sentiment_score=round(day_change_pct, 4),
+                price=price_data.get("close", 0),
                 notes=decision.get("reasoning", ""),
                 is_active=True,
             )
@@ -350,6 +351,67 @@ class TradingAgent:
             "[%s] ✓ %s order placed: %s %.4f @ $%.2f",
             symbol, decision["action"], order_side, final_qty, current_price,
         )
+
+    @staticmethod
+    def _verify_price(
+        symbol: str,
+        alpaca_bar: dict,
+        fh_quote: dict | None,
+        daily_bars: list[dict],
+    ) -> dict:
+        """
+        Cross-verify price from Alpaca latest bar against:
+          1. Finnhub real-time quote (independent source)
+          2. Alpaca daily bars (last 2 closes for day-over-day change)
+
+        Adds `day_change_pct` (fraction) to the returned price dict.
+        Clamps implausible values and logs warnings.
+        """
+        close = alpaca_bar.get("close", 0)
+
+        # ── 1. Cross-check price between Alpaca and Finnhub ──────────────────
+        if fh_quote and fh_quote.get("price"):
+            fh_price = fh_quote["price"]
+            if fh_price > 0 and close > 0:
+                divergence = abs(close - fh_price) / fh_price
+                if divergence > 0.05:          # >5% gap between sources
+                    logger.warning(
+                        "[%s] Price divergence: Alpaca=%.2f Finnhub=%.2f (%.1f%%). "
+                        "Using Finnhub price.", symbol, close, fh_price, divergence * 100
+                    )
+                    alpaca_bar = {**alpaca_bar, "close": fh_price}
+                    close = fh_price
+
+        # ── 2. Compute day-over-day change ────────────────────────────────────
+        day_change_pct = 0.0
+
+        # Source A: Finnhub dp field (most reliable — explicitly prev_close based)
+        if fh_quote and fh_quote.get("change_pct") is not None:
+            raw_pct = fh_quote["change_pct"] / 100.0   # Finnhub gives e.g. -1.42 → -0.0142
+            if abs(raw_pct) <= 0.20:                   # sanity: reject >20% single-day move
+                day_change_pct = raw_pct
+            else:
+                logger.warning(
+                    "[%s] Finnhub change_pct=%.2f%% exceeds 20%% sanity limit. "
+                    "Falling back to daily bars.", symbol, fh_quote["change_pct"]
+                )
+
+        # Source B: Alpaca daily bars (last 2 close prices)
+        if day_change_pct == 0.0 and len(daily_bars) >= 2:
+            prev_close = daily_bars[-2].get("close", 0)
+            curr_close = daily_bars[-1].get("close", 0)
+            if prev_close > 0 and curr_close > 0:
+                raw_pct = (curr_close - prev_close) / prev_close
+                if abs(raw_pct) <= 0.20:
+                    day_change_pct = raw_pct
+                else:
+                    logger.warning(
+                        "[%s] Daily bar change=%.2f%% exceeds 20%% sanity limit. "
+                        "Setting to 0.", symbol, raw_pct * 100
+                    )
+
+        alpaca_bar["day_change_pct"] = round(day_change_pct, 4)
+        return alpaca_bar
 
     @staticmethod
     def _resolve_order_side(
