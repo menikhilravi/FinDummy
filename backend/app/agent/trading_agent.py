@@ -160,7 +160,9 @@ class TradingAgent:
         for symbol in watchlist_manager.active:
             if not self._running:
                 break
-            wl_row = await self._analyse_ticker(symbol, account, macro, trading_allowed)
+            wl_row = await self._analyse_ticker(
+                symbol, account, macro, trading_allowed, market_state=state.value
+            )
             if wl_row:
                 pending_watchlist.append(wl_row)
             await asyncio.sleep(2)           # brief pause between tickers
@@ -173,7 +175,8 @@ class TradingAgent:
                 logger.warning("Batch watchlist upsert failed: %s", exc)
 
     async def _analyse_ticker(
-        self, symbol: str, account: dict, macro: dict, trading_allowed: bool
+        self, symbol: str, account: dict, macro: dict, trading_allowed: bool,
+        market_state: str = "OPEN",
     ) -> dict | None:
         """Analyse a single ticker. Returns a watchlist row dict to be batch-upserted, or None on error."""
         try:
@@ -232,6 +235,7 @@ class TradingAgent:
             current_position=current_position,
             shortable=shortable,
             ta_text=ta_text,
+            market_state=market_state,
         )
 
         # ── Process dynamic watchlist suggestions ─────────────────────────────

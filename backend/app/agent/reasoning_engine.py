@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from groq import AsyncGroq
@@ -22,6 +23,15 @@ from app.core.config import settings
 from app.core.usage_tracker import usage_tracker
 
 logger = logging.getLogger(__name__)
+
+# Per-state TTL (seconds) for cached Groq decisions.
+# Groq free tier: 100K tokens/day (~93 calls/day with 5 tickers).
+# Caching prevents burning the quota on redundant calls between cycles.
+_CACHE_TTL: dict[str, float] = {
+    "OPEN":     1500,   # 25 min — fresh decisions during regular session
+    "EXTENDED": 7200,   # 2 h   — stale decisions fine; Alpaca won't fill overnight anyway
+    "CLOSED":   86400,  # 24 h  — weekends: reuse last decision indefinitely
+}
 
 _SYSTEM_PROMPT = """You are an expert quantitative trader and portfolio manager.
 You will be given real-time market data, news, macro-economic context, and the
@@ -70,6 +80,17 @@ Output format (strictly):
 class ReasoningEngine:
     def __init__(self) -> None:
         self._client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+        # {symbol: (monotonic_timestamp, decision_dict)}
+        self._cache: dict[str, tuple[float, dict[str, Any]]] = {}
+
+    def _get_cached(self, symbol: str, ttl: float) -> dict[str, Any] | None:
+        entry = self._cache.get(symbol)
+        if entry and (time.monotonic() - entry[0]) <= ttl:
+            return entry[1]
+        return None
+
+    def _set_cached(self, symbol: str, decision: dict[str, Any]) -> None:
+        self._cache[symbol] = (time.monotonic(), decision)
 
     async def analyze(
         self,
@@ -81,7 +102,17 @@ class ReasoningEngine:
         current_position: dict[str, Any] | None = None,
         shortable: bool = True,
         ta_text: str = "",
+        market_state: str = "OPEN",
     ) -> dict[str, Any]:
+        # Return cached decision if it is fresh enough for the current market state.
+        ttl = _CACHE_TTL.get(market_state, _CACHE_TTL["OPEN"])
+        cached = self._get_cached(symbol, ttl)
+        if cached is not None:
+            logger.debug(
+                "[%s] Groq cache hit (market=%s, ttl=%ds)", symbol, market_state, ttl
+            )
+            return cached
+
         user_message = self._build_prompt(
             symbol, price_data, news, macro, account,
             current_position, shortable, ta_text,
@@ -116,6 +147,7 @@ class ReasoningEngine:
 
         # Normalise & validate
         decision = self._validate(decision, symbol)
+        self._set_cached(symbol, decision)
         logger.info(
             "[%s] Decision: %s (conf=%.2f)",
             symbol, decision["action"], decision["confidence"],
