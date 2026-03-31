@@ -25,12 +25,19 @@ from app.core.usage_tracker import usage_tracker
 logger = logging.getLogger(__name__)
 
 # Per-state TTL (seconds) for cached Groq decisions.
-# Groq free tier: 100K tokens/day (~93 calls/day with 5 tickers).
-# Caching prevents burning the quota on redundant calls between cycles.
+# Groq free tier: 100K tokens/day.  Caching + model tiering keep us well under.
 _CACHE_TTL: dict[str, float] = {
     "OPEN":     1500,   # 25 min — fresh decisions during regular session
     "EXTENDED": 7200,   # 2 h   — stale decisions fine; Alpaca won't fill overnight anyway
     "CLOSED":   86400,  # 24 h  — weekends: reuse last decision indefinitely
+}
+
+# Tiered models: fast/cheap for off-hours, full model during regular session.
+# llama-3.1-8b-instant uses ~4x fewer tokens than llama-3.3-70b-versatile.
+_MODEL_BY_STATE: dict[str, str] = {
+    "OPEN":     "",     # filled at runtime from settings.GROQ_MODEL (full model)
+    "EXTENDED": "llama-3.1-8b-instant",
+    "CLOSED":   "llama-3.1-8b-instant",
 }
 
 _SYSTEM_PROMPT = """You are an expert quantitative trader and portfolio manager.
@@ -118,16 +125,21 @@ class ReasoningEngine:
             current_position, shortable, ta_text,
         )
 
+        # Pick model + token budget based on market state to conserve daily quota.
+        model = _MODEL_BY_STATE.get(market_state) or settings.GROQ_MODEL
+        max_tokens = 1024 if market_state == "OPEN" else 600
+        logger.debug("[%s] Using model=%s max_tokens=%d (state=%s)", symbol, model, max_tokens, market_state)
+
         try:
             response = await asyncio.wait_for(
                 self._client.chat.completions.create(
-                    model=settings.GROQ_MODEL,
+                    model=model,
                     messages=[
                         {"role": "system", "content": _SYSTEM_PROMPT},
                         {"role": "user", "content": user_message},
                     ],
                     temperature=0.3,
-                    max_tokens=1024,
+                    max_tokens=max_tokens,
                     response_format={"type": "json_object"},
                 ),
                 timeout=30.0,

@@ -6,11 +6,12 @@ import { Bot, BarChart2, Activity } from "lucide-react";
 
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useTradeStore } from "@/hooks/useTradeStore";
-import { getAccount, getWatchlist } from "@/lib/api";
+import { getAccount, getWatchlist, getTrades, getPositions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import { InternalMonologue } from "@/components/dashboard/InternalMonologue";
-import { TradeAlerts, TradeFeed } from "@/components/dashboard/TradeAlerts";
+import { TradeAlerts } from "@/components/dashboard/TradeAlerts";
+import { RightPanel } from "@/components/dashboard/PositionsPanel";
 import { EquityChart } from "@/components/dashboard/EquityChart";
 import { PanicButton } from "@/components/dashboard/PanicButton";
 import { WatchlistTable } from "@/components/dashboard/WatchlistTable";
@@ -24,6 +25,8 @@ export default function DashboardPage() {
   const setWsStatus = useTradeStore((s) => s.setWsStatus);
   const setAccount = useTradeStore((s) => s.setAccount);
   const setWatchlist = useTradeStore((s) => s.setWatchlist);
+  const initTrades = useTradeStore((s) => s.initTrades);
+  const setPositions = useTradeStore((s) => s.setPositions);
 
   const { status, reconnect, maxRetriesReached } = useWebSocket({
     onMessage: handleWsEvent,
@@ -34,17 +37,37 @@ export default function DashboardPage() {
     setWsStatus(status);
   }, [status, setWsStatus]);
 
-  // Bootstrap: load account + watchlist via REST
+  // Bootstrap: load account + watchlist + trade history + positions via REST
   useEffect(() => {
     getAccount().then(setAccount).catch(() => {});
     getWatchlist().then(setWatchlist).catch(() => {});
+    // Seed trade feed from DB so it's not empty on load/reconnect
+    getTrades(50).then((trades) => {
+      initTrades(
+        trades.map((t) => ({
+          type: "trade_alert" as const,
+          symbol: t.symbol,
+          side: t.side,
+          direction: (t.side === "BUY" ? "LONG" : "SELL") as import("@/types").TradeDirection,
+          qty: t.qty,
+          price: t.entry_price,
+          confidence: t.confidence,
+          reasoning: t.reasoning ?? "",
+          order_id: t.id,
+          trading_mode: t.trading_mode,
+          timestamp: t.created_at,
+        }))
+      );
+    }).catch(() => {});
+    getPositions().then(setPositions).catch(() => {});
 
-    // Poll account every 30 s as fallback
+    // Poll account + positions every 30 s as fallback
     const interval = setInterval(() => {
       getAccount().then(setAccount).catch(() => {});
+      getPositions().then(setPositions).catch(() => {});
     }, 30_000);
     return () => clearInterval(interval);
-  }, [setAccount, setWatchlist]);
+  }, [setAccount, setWatchlist, initTrades, setPositions]);
 
   return (
     <div className="min-h-screen bg-bg-base grid-bg">
@@ -159,14 +182,14 @@ export default function DashboardPage() {
           </div>
         </motion.section>
 
-        {/* ── Right column (3/12): Trade feed ─────────────────────────────── */}
+        {/* ── Right column (3/12): Trade feed + Positions ──────────────────── */}
         <motion.aside
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
           className="col-span-12 lg:col-span-3 flex flex-col overflow-hidden"
         >
-          <TradeFeed />
+          <RightPanel />
         </motion.aside>
       </main>
     </div>

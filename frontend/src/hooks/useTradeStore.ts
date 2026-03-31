@@ -41,6 +41,11 @@ interface TradeStore {
   // Recent trades
   recentTrades: TradeAlertEvent[];
   addTrade: (t: TradeAlertEvent) => void;
+  initTrades: (trades: TradeAlertEvent[]) => void;
+
+  // Open positions
+  positions: import("@/types").Position[];
+  setPositions: (p: import("@/types").Position[]) => void;
 
   // Agent status
   isAgentRunning: boolean;
@@ -103,6 +108,10 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
     set((state) => ({
       recentTrades: [t, ...state.recentTrades].slice(0, 50),
     })),
+  initTrades: (trades) => set({ recentTrades: trades }),
+
+  positions: [],
+  setPositions: (positions) => set({ positions }),
 
   isAgentRunning: true,
   setAgentRunning: (v) => set({ isAgentRunning: v }),
